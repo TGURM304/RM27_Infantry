@@ -3,8 +3,8 @@
 //
 
 #pragma once
+#include "ins/ins.h"
 #include "rc/dr16.h"
-#include "rc/ht10.h"
 
 enum gimbal_mode_e {
     GIMBAL_DISABLE,     // 云台无力，所有控制量置0
@@ -14,11 +14,21 @@ enum gimbal_mode_e {
 };
 
 typedef struct {
+    struct {
+        float yaw; float pitch; float roll;
+        float yaw_vel; float pitch_vel; float roll_vel;
+    } ins;
+
     rc::dr16::data_t rc;
+
+    bool gimbal_online;
+
     gimbal_mode_e gimbal_mode;
     gimbal_mode_e last_gimbal_mode;
 
-    float gimable_picth_target;     // pitch 目标角度
-    float gimbal_yaw_taget;         // yaw 目标角度
-}gimbal_e;
-extern gimbal_e gimbal;
+    float pitch_target;     // pitch 目标角度
+    float yaw_target;         // yaw 目标角度
+    float yaw_current;
+    float yaw_torque;
+}gimbal_t;
+extern gimbal_t gimbal;
