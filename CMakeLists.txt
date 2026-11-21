@@ -27,6 +27,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 project(${CMAKE_PROJECT_NAME})
 message("Build type: " ${CMAKE_BUILD_TYPE})
 
+option(TROBOT_ENABLE_SYSTEMVIEW "Enable SEGGER SystemView tracing" OFF)
+
 # Enable CMake support for ASM and C languages
 enable_language(C CXX ASM)
 
@@ -43,7 +45,12 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 add_subdirectory(bsp)
-target_link_libraries(FreeRTOS PUBLIC bsp)
+if(TROBOT_ENABLE_SYSTEMVIEW)
+    target_link_libraries(FreeRTOS PRIVATE bsp::segger_config)
+    target_compile_options(FreeRTOS PRIVATE
+        "$<$<COMPILE_LANGUAGE:C>:-include${CMAKE_CURRENT_SOURCE_DIR}/bsp/internal/segger/freertos_trace_config.h>"
+    )
+endif()
 message(STATUS "BSP Loaded")
 
 add_subdirectory(components)
@@ -56,12 +63,6 @@ target_compile_options(app PRIVATE -Werror)
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
-)
-
-# Add sources to executable
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user sources here
-    $<TARGET_OBJECTS:app>
 )
 
 # Add include paths
@@ -81,9 +82,7 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 target_link_libraries(${CMAKE_PROJECT_NAME}
     # Add user defined libraries
     stm32cubemx
-    components
-    bsp
-    m
+    app
 )
 
 

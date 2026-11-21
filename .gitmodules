@@ -25,3 +25,6 @@
 [submodule "components/robomaster"]
 	path = components/robomaster
 	url = https://github.com/lym12321/tr_comp_robomaster.git
+[submodule "bsp/third_party/cherryusb"]
+	path = bsp/third_party/cherryusb
+	url = https://github.com/cherry-embedded/CherryUSB.git

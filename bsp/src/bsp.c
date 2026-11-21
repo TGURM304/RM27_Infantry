@@ -8,14 +8,15 @@
 #include "bsp/can.h"
 #include "bsp/def.h"
 #include "bsp/imu.h"
-#include "bsp/lcd.h"
 #include "bsp/led.h"
 #include "bsp/buzzer.h"
 
-#include "task.h"
 #include "iwdg.h"
+#include "main.h"
 #include "bsp/usb.h"
 #include "bsp/adc.h"
+
+#include "segger/trace.h"
 
 void bsp_iwdg_refresh() {
     HAL_IWDG_Refresh(&hiwdg1);
@@ -37,22 +38,21 @@ void bsp_assert_failed(const char *expr, const char *file, int line) {
         __asm volatile("bkpt 0");
     }
 
-    for (;;) {
-        if (hiwdg1.Instance != NULL) hiwdg1.Instance->KR = 0x0000AAAAU;
-        __asm volatile("nop");
-    }
+    for (;;) __asm volatile("nop");
 }
 
 uint32_t bsp_hw_init() {
+    bsp_segger_trace_init();
+
     uint32_t failed = 0;
     if (bsp_led_init() != BSP_STATUS_OK) failed |= BSP_HW_LED;
-    bsp_usb_init();
+    if (bsp_flash_init() != BSP_STATUS_OK) failed |= BSP_HW_FLASH;
+    if (bsp_usb_init() != BSP_STATUS_OK) failed |= BSP_HW_USB;
     if (bsp_can_init(E_CAN_1) != BSP_STATUS_OK) failed |= BSP_HW_CAN_1;
     if (bsp_can_init(E_CAN_2) != BSP_STATUS_OK) failed |= BSP_HW_CAN_2;
     if (bsp_can_init(E_CAN_3) != BSP_STATUS_OK) failed |= BSP_HW_CAN_3;
     if (bsp_imu_init() != BSP_STATUS_OK) failed |= BSP_HW_IMU;
     if (bsp_adc_init() != BSP_STATUS_OK) failed |= BSP_HW_ADC;
-    if (!bsp_flash_init()) failed |= BSP_HW_FLASH;
     if (bsp_buzzer_init() != BSP_STATUS_OK) failed |= BSP_HW_BUZZER;
     return failed;
 }

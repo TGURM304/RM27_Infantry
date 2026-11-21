@@ -22,6 +22,8 @@ typedef struct {
         float vy;       // 遥控器左右平移指令，坐标变换前，m/s
         float rotate;   // rad/s
     }rc;
+
+    bool chassis_online;
     chassis_mode_e chassis_mode;
     chassis_mode_e last_chassis_mode;
 
@@ -29,8 +31,9 @@ typedef struct {
     float vy_cmd;      // 控制指令 vy
     float rotate_cmd;  // 控制指令 rotate
 
-    float ins_yaw_target;    // 云台目标值
-    float ins_yaw_current;   // 云台当前值
-}chassis_e;
+    float ins_yaw_target;    // 云台方位目标值
+    float ins_yaw_current;   // 云台当前方位
+    float yaw_motor_angle;   // 云台电机角度
+}chassis_t;
 
-extern chassis_e chassis;
+extern chassis_t chassis;
