@@ -4,8 +4,8 @@
 #pragma once
 #include "stdint.h"
 
-#define WHEEL_RADIUS 0.07615
-#define WHEEL_CENTER_DISTANCE 0.258
+#define WHEEL_RADIUS 0.07615f
+#define WHEEL_CENTER_DISTANCE 0.258f
 
 enum chassis_mode_e{
     CHASSIS_DISABLE,           //
@@ -27,6 +27,8 @@ typedef struct {
     chassis_mode_e chassis_mode;
     chassis_mode_e last_chassis_mode;
 
+    float yaw_rc_delta;
+
     float vx_cmd;      // 控制指令 vx
     float vy_cmd;      // 控制指令 vy
     float rotate_cmd;  // 控制指令 rotate
@@ -34,6 +36,8 @@ typedef struct {
     float ins_yaw_target;    // 云台方位目标值
     float ins_yaw_current;   // 云台当前方位
     float yaw_motor_angle;   // 云台电机角度
+
+    float chassis_rotate_speed;
 }chassis_t;
 
 extern chassis_t chassis;

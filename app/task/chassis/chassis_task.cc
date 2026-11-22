@@ -31,7 +31,7 @@ pid speed_pid2(750, 20, 5, 16384, 16384);
 pid speed_pid3(750, 20, 5, 16384, 16384);
 pid speed_pid4(750, 20, 5, 16384, 16384);
 
-pid follow_pid(4.f, 0.f, 0.f, 0.f, 3.f);
+pid follow_pid(6.f, 0.f, 0.f, 0.f, 6.f);
 
 chassis_t chassis;
 
@@ -96,11 +96,13 @@ void chassis_data_update() {
     chassis.rc.s_l = msg.data.s_l;
     chassis.rc.vx = msg.data.vx / 220.f;
     chassis.rc.vy = msg.data.vy / 220.f;
-    chassis.rc.rotate = msg.data.rotate;
+    chassis.rc.rotate = msg.data.rotate / 110.f;
 
     chassis.yaw_motor_angle = msg.data.yaw_motor_angle;
-    chassis.ins_yaw_target = 0;
-    chassis.ins_yaw_current = 0;
+    chassis.yaw_rc_delta = msg.data.yaw_rc_delta;
+
+    chassis.chassis_rotate_speed = (motor_1.feedback.speed + motor_2.feedback.speed + motor_3.feedback.speed + motor_4.feedback.speed)
+            * WHEEL_RADIUS / (4.f * WHEEL_CENTER_DISTANCE);
 }
 void chassis_reference() {
     switch (chassis.chassis_mode) {
@@ -117,9 +119,10 @@ void chassis_reference() {
                 follow_pid.clear();
             }
             float relative_yaw = remainder(chassis.yaw_motor_angle, 2.f * fpi);
-            // TODO:测试作为前馈值 or pid目标量
-            float yaw_error = remainder(chassis.ins_yaw_target - chassis.ins_yaw_current, 2.f * fpi);
+            float yaw_error = remainder(chassis.yaw_rc_delta, 2.f * fpi);
             float follow_error = remainder(relative_yaw + yaw_error, 2.f * fpi);
+
+            if (relative_yaw < 0.1f) yaw_error = 0;
 
             // 对齐车头或车尾，误差折到(-π/2, π/2]
             while (follow_error > fpi / 2.f) follow_error -= fpi;
@@ -132,7 +135,15 @@ void chassis_reference() {
             break;
             }
         case CHASSIS_SPIN : {
+            float relative_yaw = remainder(chassis.yaw_motor_angle, 2.f * fpi);
 
+            float yaw_lead = relative_yaw - 0.1f * (chassis.chassis_rotate_speed + chassis.rc.rotate) / 2.0f;
+
+            chassis.vx_cmd = chassis.rc.vx * cos(yaw_lead) - chassis.rc.vy * sin(yaw_lead);
+            chassis.vy_cmd = chassis.rc.vx * sin(yaw_lead) + chassis.rc.vy * cos(yaw_lead);
+            chassis.rotate_cmd = chassis.rc.rotate;
+
+            break;
             }
         case CHASSIS_SINGLE :
         default: break;

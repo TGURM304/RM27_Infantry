@@ -10,8 +10,7 @@ struct data_to_chassis {
     float vx, vy, rotate;
     float yaw_motor_angle;
 
-
-
+    float yaw_rc_delta;
 } __attribute__((packed));
 
 struct data_to_gimbal {

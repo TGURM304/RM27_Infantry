@@ -6,27 +6,32 @@
 #include "gimbal_task.h"
 #include "SMC/slidingmodec.h"
 #include "controller/pid.h"
-#include "motor/dji.h"
 #include "utils/os.h"
 #include "motor/dm.h"
 #include "utils/msg.h"
 #include "rc/dr16.h"
 #include "utils/vofa.h"
+#include "ins/ins.h"
 
 constexpr float fpi = M_PI;
 constexpr float SQRT2 = M_SQRT2;
+constexpr float g = 9.80665f;
 
 using namespace motor;
 using namespace controller;
 // DM 4340 位置速度模式
-dm fold_pitch_motor("Fold", {.slave_id = 0x03,.master_id = 0x23,.port = E_CAN_2,.mode = dm::MIT,.p_max = 12.5f,.v_max = 30.0f,.t_max = 10.0f});
+dm fold_pitch_motor("Fold", {.slave_id = 0x03,.master_id = 0x23,.port = E_CAN_2,.mode = dm::POSITION_SPEED,.p_max = 12.5f,.v_max = 30.0f,.t_max = 10.0f});
 // DM 4310 MIT 模式
 dm pitch_motor("pitch", {.slave_id = 0x05,.master_id = 0x25,.port = E_CAN_2,.mode = dm::MIT,.p_max = 12.5f,.v_max = 30.0f,.t_max = 10.0f});
 // DM 4310 MIT 模式
-dm yaw_motor("Yaw", {.slave_id = 0x04,.master_id = 0x24,.port = E_CAN_3,.mode = dm::MIT,.p_max = 12.5f,.v_max = 30.0f,.t_max = 10.0f});
+dm yaw_motor("Yaw", {.slave_id = 0x04,.master_id = 0x24,.port = E_CAN_3,.mode = dm::MIT,.p_max = 3.1415926535f,.v_max = 30.0f,.t_max = 10.0f});
 
 // 滑膜控制算法
 smc YawSMC(30.f, 50.f, 0.001f, 21.f, 27.f, 4.f, 0.00035f, 0.5f);
+
+//PID
+pid pitch_speed(1.5, 0.005, 0, 1, 3);
+pid pitch_angle(22, 0, 0.0, 0, 20);
 
 
 msg::can_sender<data_to_chassis, E_CAN_3, 0x311> gimbal_tx;
@@ -59,7 +64,9 @@ void gimbal_update();
                 msg->gimbal_online = gimbal.gimbal_online;
                 msg->vx = gimbal.rc.rc_l[0];
                 msg->vy = gimbal.rc.rc_l[1];
+                msg->rotate = gimbal.rc.reserved;
                 msg->yaw_motor_angle = yaw_motor.feedback.pos;
+                msg->yaw_rc_delta = -gimbal.yaw_rc_delta;
                 gimbal_tx.send();
                 cnt = 0;
             }
@@ -69,7 +76,10 @@ void gimbal_update();
         }
 
 
-        vofa::send(E_UART_1, gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel, gimbal.yaw_torque);
+        // vofa::send(E_UART_1, pitch_motor.feedback.pos, pitch_motor.feedback.vel, gimbal.ins.pitch, gimbal.ins.pitch_vel, pitch_motor.feedback.vel, gimbal.pitch_torque);
+        // vofa::send(E_UART_1, fold_pitch_motor.feedback.vel);
+        // vofa::send(E_UART_1, remainder(yaw_motor.feedback.pos, 2.f * fpi));
+        vofa::send(E_UART_1, fold_pitch_motor.feedback.pos, fold_pitch_motor.feedback.temp_rotor, fold_pitch_motor.feedback.temp_mos);
         os::task::sleep(1);
     }
 }
@@ -98,23 +108,29 @@ void gimbal_safety_check() {
     }
 }
 void gimbal_mode_set() {
-    if (gimbal.rc.s_l == 0) gimbal.gimbal_mode = GIMBAL_FOLD;
+    if (gimbal.rc.s_l != -1) {
+        gimbal.gimbal_mode = GIMBAL_FOLD;
+        if (gimbal.rc.s_r != -1) gimbal.gimbal_mode = GIMBAL_UNFOLD;
+    }
     else gimbal.gimbal_mode = GIMBAL_DISABLE;
+
 }
 void gimbal_data_update() {
     gimbal.rc = rc::dr16::state();
-    const auto ins_state = ins::state();
-    gimbal.ins.pitch = (ins_state.roll > 0.0f) ? (ins_state.roll - fpi) : (ins_state.roll + fpi);
-    gimbal.ins.yaw = ins_state.yaw * 180.f / fpi;
-    gimbal.ins.yaw_vel = -ins_state.gyro[2] * 180.f / fpi;
+    gimbal.ins.pitch = -((ins::data()->roll > 0.0f) ? (ins::data()->roll - fpi) : (ins::data()->roll + fpi));
+    gimbal.ins.yaw = ins::data()->yaw * 180.f / fpi;
+    gimbal.ins.yaw_vel = -ins::data()->gyro[2] * 180.f / fpi;
+
+    gimbal.ins.pitch_vel = -ins::data()->gyro[0];
 }
 void gimbal_reference() {
     gimbal.yaw_torque = 0.f;
     switch (gimbal.gimbal_mode) {
         case GIMBAL_DISABLE: {
-            fold_pitch_motor.control(0.f, 0.f, 0.f, 0.f, 0.f);
-            pitch_motor.control(0.f, 0.f, 0.f, 0.f, 0.f);
-            yaw_motor.control(0.f, 0.f, 0.f, 0.f, 0.f);
+            fold_pitch_motor.disable();
+            // gimbal.fold_motor_target_angle = FOLD_MOTOR_DOWN_LIMIT;
+            gimbal.pitch_torque = 0.f;
+            gimbal.yaw_torque = 0.f;
             break;
             }
 
@@ -122,19 +138,37 @@ void gimbal_reference() {
             if (gimbal.last_gimbal_mode != GIMBAL_FOLD) {
                 gimbal.yaw_target = gimbal.ins.yaw;
             }
-            gimbal.yaw_target = std::remainder(gimbal.yaw_target - static_cast<float>(gimbal.rc.rc_r[0]) * 0.5f / 660.f, 360.f);
+            //fold pitch
+            gimbal.fold_motor_target_angle = FOLD_MOTOR_DOWN_LIMIT;
+            // yaw
+            gimbal.yaw_rc_delta = static_cast<float>(gimbal.rc.rc_r[0]) * 0.5f / 660.f;
+            gimbal.yaw_target = remainder(gimbal.yaw_target - gimbal.yaw_rc_delta, 360.f);
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
-
+            // pitch
             gimbal.pitch_target = 0.f;
+            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f);
+            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.67f * fpi / 180.f) * 0.033;
+            gimbal.pitch_torque = pitch_feedforward + pitch_speed.update(pitch_motor.feedback.vel, pitch_spd);
 
+            // gimbal.pitch_torque = pitch_feedforward;
+            // vofa::send(E_UART_1, pitch_feedforward, gimbal.ins.pitch);
             break;
         }
         case GIMBAL_UNFOLD : {
             if (gimbal.last_gimbal_mode != GIMBAL_UNFOLD) {
                 gimbal.yaw_target = gimbal.ins.yaw;
             }
-            gimbal.yaw_target = std::remainder(gimbal.yaw_target - static_cast<float>(gimbal.rc.rc_r[0]) * 0.5f / 660.f, 360.f);
+            //fold pitch
+            gimbal.fold_motor_target_angle = FOLD_MOTOR_UP_LIMIT;
+            // yaw
+            gimbal.yaw_rc_delta = static_cast<float>(gimbal.rc.rc_r[0]) * 0.5f / 660.f;
+            gimbal.yaw_target = remainder(gimbal.yaw_target - gimbal.yaw_rc_delta, 360.f);
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
+            // pitch
+            gimbal.pitch_target = 0.f;
+            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f);
+            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.67f * fpi / 180.f) * 0.033;
+            gimbal.pitch_torque = pitch_feedforward + pitch_speed.update(pitch_motor.feedback.vel, pitch_spd);
 
             break;
         }
@@ -146,5 +180,7 @@ void gimbal_reference() {
 }
 
 void gimbal_update() {
+    fold_pitch_motor.control(gimbal.fold_motor_target_angle, 28);
+    pitch_motor.control(0.f, 0.f, 0.f, 0.f, gimbal.pitch_torque);
     yaw_motor.control(0.f, 0.f, 0.f, 0.f, gimbal.yaw_torque);
 }
