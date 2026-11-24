@@ -30,8 +30,8 @@ dm yaw_motor("Yaw", {.slave_id = 0x04,.master_id = 0x24,.port = E_CAN_3,.mode = 
 smc YawSMC(30.f, 50.f, 0.001f, 21.f, 27.f, 4.f, 0.00035f, 0.5f);
 
 //PID
-pid pitch_speed(1.5, 0.005, 0, 1, 3);
-pid pitch_angle(22, 0, 0.0, 0, 20);
+pid pitch_speed(1.2f, 0.005, 1.f, 1.f, 10);
+pid pitch_angle(25, 0, 0.0, 0, 30);
 
 
 msg::can_sender<data_to_chassis, E_CAN_3, 0x311> gimbal_tx;
@@ -76,10 +76,12 @@ void gimbal_update();
         }
 
 
+        // vofa::send(E_UART_1, gimbal.ins.yaw);
+        vofa::send(E_UART_1, gimbal.ins.pitch, gimbal.pitch_torque);
         // vofa::send(E_UART_1, pitch_motor.feedback.pos, pitch_motor.feedback.vel, gimbal.ins.pitch, gimbal.ins.pitch_vel, pitch_motor.feedback.vel, gimbal.pitch_torque);
         // vofa::send(E_UART_1, fold_pitch_motor.feedback.vel);
         // vofa::send(E_UART_1, remainder(yaw_motor.feedback.pos, 2.f * fpi));
-        vofa::send(E_UART_1, fold_pitch_motor.feedback.pos, fold_pitch_motor.feedback.temp_rotor, fold_pitch_motor.feedback.temp_mos);
+        // vofa::send(E_UART_1, fold_pitch_motor.feedback.pos, fold_pitch_motor.feedback.temp_rotor, fold_pitch_motor.feedback.temp_mos);
         os::task::sleep(1);
     }
 }
@@ -146,8 +148,8 @@ void gimbal_reference() {
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
             // pitch
             gimbal.pitch_target = 0.f;
-            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f);
-            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.67f * fpi / 180.f) * 0.033;
+            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f) + fold_pitch_motor.feedback.vel + 0.1;
+            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.066;
             gimbal.pitch_torque = pitch_feedforward + pitch_speed.update(pitch_motor.feedback.vel, pitch_spd);
 
             // gimbal.pitch_torque = pitch_feedforward;
@@ -166,10 +168,9 @@ void gimbal_reference() {
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
             // pitch
             gimbal.pitch_target = 0.f;
-            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f);
-            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.67f * fpi / 180.f) * 0.033;
+            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f) + fold_pitch_motor.feedback.vel * 0.9;
+            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.066;
             gimbal.pitch_torque = pitch_feedforward + pitch_speed.update(pitch_motor.feedback.vel, pitch_spd);
-
             break;
         }
         case GIMBAL_AUTO_AIM:
@@ -180,7 +181,7 @@ void gimbal_reference() {
 }
 
 void gimbal_update() {
-    fold_pitch_motor.control(gimbal.fold_motor_target_angle, 28);
+    fold_pitch_motor.control(gimbal.fold_motor_target_angle, 4);
     pitch_motor.control(0.f, 0.f, 0.f, 0.f, gimbal.pitch_torque);
     yaw_motor.control(0.f, 0.f, 0.f, 0.f, gimbal.yaw_torque);
 }
