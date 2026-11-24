@@ -27,11 +27,12 @@ dm pitch_motor("pitch", {.slave_id = 0x05,.master_id = 0x25,.port = E_CAN_2,.mod
 dm yaw_motor("Yaw", {.slave_id = 0x04,.master_id = 0x24,.port = E_CAN_3,.mode = dm::MIT,.p_max = 3.1415926535f,.v_max = 30.0f,.t_max = 10.0f});
 
 // 滑膜控制算法
-smc YawSMC(30.f, 50.f, 0.001f, 21.f, 27.f, 4.f, 0.00035f, 0.5f);
+smc YawSMC(30.f, 50.f, 0.001f, 21.f, 27.f, 7.f, 0.00038f, 0.01f);
+smc PitchSMC(40.f, 70.f, 0.001f, 21.f, 27.f, 7.f, 0.00045f, 0.01f);
 
 //PID
 pid pitch_speed(1.2f, 0.005, 1.f, 1.f, 10);
-pid pitch_angle(25, 0, 0.0, 0, 30);
+pid pitch_angle(15, 0, 0.0, 0, 30);
 
 
 msg::can_sender<data_to_chassis, E_CAN_3, 0x311> gimbal_tx;
@@ -75,11 +76,8 @@ void gimbal_update();
             gimbal_update();
         }
 
-
-        // vofa::send(E_UART_1, gimbal.ins.yaw);
-        vofa::send(E_UART_1, gimbal.ins.pitch, gimbal.pitch_torque);
         // vofa::send(E_UART_1, pitch_motor.feedback.pos, pitch_motor.feedback.vel, gimbal.ins.pitch, gimbal.ins.pitch_vel, pitch_motor.feedback.vel, gimbal.pitch_torque);
-        // vofa::send(E_UART_1, fold_pitch_motor.feedback.vel);
+        vofa::send(E_UART_1, yaw_motor.feedback.vel * 180.f / fpi, gimbal.ins.yaw_vel);
         // vofa::send(E_UART_1, remainder(yaw_motor.feedback.pos, 2.f * fpi));
         // vofa::send(E_UART_1, fold_pitch_motor.feedback.pos, fold_pitch_motor.feedback.temp_rotor, fold_pitch_motor.feedback.temp_mos);
         os::task::sleep(1);
@@ -105,7 +103,6 @@ void gimbal_safety_check() {
     if (!gimbal.gimbal_online) {
         fold_pitch_motor.disable(), pitch_motor.disable(), yaw_motor.disable();
     } else {
-        // fold_pitch_motor.reset(), pitch_motor.reset(), yaw_motor.reset();
         fold_pitch_motor.enable(), pitch_motor.enable(), yaw_motor.enable();
     }
 }
@@ -130,7 +127,6 @@ void gimbal_reference() {
     switch (gimbal.gimbal_mode) {
         case GIMBAL_DISABLE: {
             fold_pitch_motor.disable();
-            // gimbal.fold_motor_target_angle = FOLD_MOTOR_DOWN_LIMIT;
             gimbal.pitch_torque = 0.f;
             gimbal.yaw_torque = 0.f;
             break;
@@ -139,6 +135,8 @@ void gimbal_reference() {
         case GIMBAL_FOLD : {
             if (gimbal.last_gimbal_mode != GIMBAL_FOLD) {
                 gimbal.yaw_target = gimbal.ins.yaw;
+                pitch_speed.clear();
+                pitch_angle.clear();
             }
             //fold pitch
             gimbal.fold_motor_target_angle = FOLD_MOTOR_DOWN_LIMIT;
@@ -149,16 +147,17 @@ void gimbal_reference() {
             // pitch
             gimbal.pitch_target = 0.f;
             float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f) + fold_pitch_motor.feedback.vel + 0.1;
-            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.066;
+            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.065;
             gimbal.pitch_torque = pitch_feedforward + pitch_speed.update(pitch_motor.feedback.vel, pitch_spd);
 
-            // gimbal.pitch_torque = pitch_feedforward;
-            // vofa::send(E_UART_1, pitch_feedforward, gimbal.ins.pitch);
             break;
         }
         case GIMBAL_UNFOLD : {
             if (gimbal.last_gimbal_mode != GIMBAL_UNFOLD) {
                 gimbal.yaw_target = gimbal.ins.yaw;
+                gimbal.pitch_target = 0.f;
+                pitch_speed.clear();
+                pitch_angle.clear();
             }
             //fold pitch
             gimbal.fold_motor_target_angle = FOLD_MOTOR_UP_LIMIT;
@@ -167,10 +166,16 @@ void gimbal_reference() {
             gimbal.yaw_target = remainder(gimbal.yaw_target - gimbal.yaw_rc_delta, 360.f);
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
             // pitch
-            gimbal.pitch_target = 0.f;
-            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f) + fold_pitch_motor.feedback.vel * 0.9;
+            gimbal.pitch_target -= static_cast<float>(gimbal.rc.rc_r[1]) * 0.5f / 660.f;
+
+            if (gimbal.pitch_target < PITCH_MOTOR_UP_LIMIT * 180.f / fpi) gimbal.pitch_target = PITCH_MOTOR_UP_LIMIT * 180.f / fpi;
+            if (gimbal.pitch_target > FOLD_MOTOR_DOWN_LIMIT * 180.f / fpi) gimbal.pitch_target = PITCH_MOTOR_DOWN_LIMIT * 180.f / fpi;
+
             float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.066;
-            gimbal.pitch_torque = pitch_feedforward + pitch_speed.update(pitch_motor.feedback.vel, pitch_spd);
+            gimbal.pitch_torque = pitch_feedforward + PitchSMC.smc_update(gimbal.pitch_target,
+                gimbal.ins.pitch * 180.f / fpi,
+                gimbal.ins.pitch_vel * 180.f / fpi
+            );
             break;
         }
         case GIMBAL_AUTO_AIM:

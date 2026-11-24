@@ -10,10 +10,10 @@ float smc::smc_update(float angle_target, float angle_now, float angle_vel)
 
 	error = remainder(angle - target, 360.f);
 	float error_dot = ang_vel - target_dot;
-	// target_ddot = (target - target_last) - target_dot;
-	// target_dot = (target - target_last);
-	target_ddot = 0;
-	target_dot = 0;
+	target_ddot = (target - target_last) - target_dot;
+	target_dot = (target - target_last);
+	// target_ddot = 0;
+	// target_dot = 0;
 
 	if (fabs(error) < error_eps)
 	{
@@ -32,7 +32,7 @@ float smc::smc_update(float angle_target, float angle_now, float angle_vel)
 
 	if (abs(error) < 1)
 	{
-		// error = angle  - target;
+		error = angle  - target;
 
 		s = error_dot + C * error; //smc surface
 		output = J * (target_ddot - C * error_dot - epsilon * Sat(s) - K * s);
