@@ -8,7 +8,7 @@
 #define GIMBAL_MASS 1.564                 // 云台质量
 
 #define FOLD_MOTOR_DOWN_LIMIT 0.0        // fold motor 折叠角度
-#define FOLD_MOTOR_UP_LIMIT -1.1414947    // fold motor 展开角度
+#define FOLD_MOTOR_UP_LIMIT -1.1499  // fold motor 展开角度
 
 #define PITCH_MOTOR_DOWN_LIMIT 0.43888  // pitch motor 低头角度
 #define PITCH_MOTOR_UP_LIMIT -0.3   // pitch motor 抬头角度

@@ -12,8 +12,6 @@ float smc::smc_update(float angle_target, float angle_now, float angle_vel)
 	float error_dot = ang_vel - target_dot;
 	target_ddot = (target - target_last) - target_dot;
 	target_dot = (target - target_last);
-	// target_ddot = 0;
-	// target_dot = 0;
 
 	if (fabs(error) < error_eps)
 	{
