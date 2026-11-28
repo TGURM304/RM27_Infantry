@@ -7,6 +7,7 @@ set(SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/task/gimbal/SMC/slidingmodec.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/task/gimbal/gimbal_task.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/task/shoot/shoot_task.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/task/vision/vision.cc"
 )
 
 add_library(app OBJECT ${SOURCES})

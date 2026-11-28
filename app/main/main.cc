@@ -55,7 +55,7 @@ extern "C" [[noreturn]] void app_entrance(void *args) {
     music::init();
     logger::init_flash(logger::WARNING);
     // logger::init(E_UART_1, logger::INFO);
-    // terminal::init(E_UART_1);
+    terminal::init(E_UART_1);
     rc::dr16::init(E_UART_5);
     // rc::ht10::init(E_UART_5);
 
@@ -80,8 +80,8 @@ extern "C" [[noreturn]] void app_entrance(void *args) {
     // chassis_task, nullptr, "chassis_task", 512, os::task::Priority::HIGH
     // ));
     // BSP_ASSERT(os::task::static_create(
-    //      shoot_task, nullptr, "shoot_task", 512, os::task::Priority::HIGH
-    //  ));
+    // shoot_task, nullptr, "shoot_task", 512, os::task::Priority::HIGH
+    // ));
 
     for (;;) {
         if (startup_ok) {

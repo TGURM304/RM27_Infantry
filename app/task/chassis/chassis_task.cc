@@ -125,8 +125,8 @@ void chassis_reference() {
             if (relative_yaw < 0.1f) yaw_error = 0;
 
             // 对齐车头或车尾，误差折到(-π/2, π/2]
-            while (follow_error > fpi / 2.f) follow_error -= fpi;
-            while (follow_error <= -fpi / 2.f) follow_error += fpi;
+            // while (follow_error > fpi / 2.f) follow_error -= fpi;
+            // while (follow_error <= -fpi / 2.f) follow_error += fpi;
 
             chassis.vx_cmd = chassis.rc.vx * cos(relative_yaw) - chassis.rc.vy * sin(relative_yaw);
             chassis.vy_cmd = chassis.rc.vx * sin(relative_yaw) + chassis.rc.vy * cos(relative_yaw);
@@ -137,7 +137,7 @@ void chassis_reference() {
         case CHASSIS_SPIN : {
             float relative_yaw = remainder(chassis.yaw_motor_angle, 2.f * fpi);
 
-            float yaw_lead = relative_yaw - 0.1f * (chassis.chassis_rotate_speed + chassis.rc.rotate) / 2.0f;
+            float yaw_lead = relative_yaw - 0.02f * chassis.chassis_rotate_speed;
 
             chassis.vx_cmd = chassis.rc.vx * cos(yaw_lead) - chassis.rc.vy * sin(yaw_lead);
             chassis.vy_cmd = chassis.rc.vx * sin(yaw_lead) + chassis.rc.vy * cos(yaw_lead);

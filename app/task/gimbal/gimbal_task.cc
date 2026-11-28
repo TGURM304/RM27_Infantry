@@ -4,10 +4,9 @@
 
 #include "def.h"
 #include "gimbal_task.h"
+#include "vision/vision.h"
 #include "SMC/slidingmodec.h"
 #include "controller/pid.h"
-#include "filter/bandpass_filter.h"
-#include "filter/lowpass_filter.h"
 #include "utils/os.h"
 #include "motor/dm.h"
 #include "utils/msg.h"
@@ -36,9 +35,6 @@ smc PitchSMC(30.f, 60.f, 0.001f, 21.f, 27.f, 7.f, 0.00045f, 0.5f);
 pid pitch_speed(1.2f, 0.005, 1.f, 1.f, 10);
 pid pitch_angle(20, 0, 0.0, 0, 30);
 
-// filter::low_pass_filter pit_filter(10,1000);
-
-
 msg::can_sender<data_to_chassis, E_CAN_3, 0x311> gimbal_tx;
 msg::can_receiver<data_to_gimbal, E_CAN_3, 0x322> gimbal_rx;
 
@@ -52,6 +48,7 @@ void gimbal_reference();
 void gimbal_update();
 // task
 [[noreturn]] void gimbal_task(void *args) {
+    vision::init();
     gimbal_init();
     uint8_t cnt = 0;
     while (true) {
@@ -79,8 +76,9 @@ void gimbal_update();
             gimbal_reference();
             gimbal_update();
         }
+        vision::send(2, &ins::data()->q[0], gimbal.ins.yaw, gimbal.ins.yaw_vel, gimbal.ins.pitch, gimbal.ins.pitch_vel);
 
-        vofa::send(E_UART_1, gimbal.ins.pitch, gimbal.ins.pitch_vel);
+        // vofa::send(E_UART_1, gimbal.ins.pitch, gimbal.ins.pitch_vel);
         // vofa::send(E_UART_1, pitch_motor.feedback.pos, pitch_motor.feedback.vel, gimbal.ins.pitch, gimbal.ins.pitch_vel, pitch_motor.feedback.vel, gimbal.pitch_torque);
         // vofa::send(E_UART_1, yaw_motor.feedback.vel * 180.f / fpi, gimbal.ins.yaw_vel);
         // vofa::send(E_UART_1, remainder(yaw_motor.feedback.pos, 2.f * fpi));
@@ -113,19 +111,20 @@ void gimbal_safety_check() {
 }
 void gimbal_mode_set() {
     if (gimbal.rc.s_l != -1) {
-        gimbal.gimbal_mode = GIMBAL_FOLD;
-        if (gimbal.rc.s_r != -1) gimbal.gimbal_mode = GIMBAL_UNFOLD;
+        if (gimbal.rc.s_r == -1) gimbal.gimbal_mode = GIMBAL_FOLD;
+        else if (gimbal.rc.s_r ==  0) gimbal.gimbal_mode = GIMBAL_UNFOLD;
+        else if (gimbal.rc.s_r ==  1) gimbal.gimbal_mode = GIMBAL_AUTO_AIM;
     }
     else gimbal.gimbal_mode = GIMBAL_DISABLE;
-
 }
 void gimbal_data_update() {
     gimbal.rc = rc::dr16::state();
+
     gimbal.ins.pitch = -((ins::data()->roll > 0.0f) ? (ins::data()->roll - fpi) : (ins::data()->roll + fpi));
+    gimbal.ins.pitch_vel = -ins::data()->gyro[0];
+
     gimbal.ins.yaw = ins::data()->yaw * 180.f / fpi;
     gimbal.ins.yaw_vel = -ins::data()->gyro[2] * 180.f / fpi;
-
-    gimbal.ins.pitch_vel = -ins::data()->gyro[0];
 }
 void gimbal_reference() {
     gimbal.yaw_torque = 0.f;
@@ -186,6 +185,7 @@ void gimbal_reference() {
             break;
         }
         case GIMBAL_AUTO_AIM:
+
         default: break;
     }
 
