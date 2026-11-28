@@ -151,7 +151,7 @@ void gimbal_reference() {
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
             // pitch
             gimbal.pitch_target = 0.f;
-            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f) + fold_pitch_motor.feedback.vel + 0.1;
+            float pitch_spd = pitch_angle.update(gimbal.ins.pitch, 0.f) + fold_pitch_motor.feedback.vel;
             float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.065;
             gimbal.pitch_torque = pitch_feedforward + pitch_speed.update(pitch_motor.feedback.vel, pitch_spd);
 
@@ -160,7 +160,7 @@ void gimbal_reference() {
         case GIMBAL_UNFOLD : {
             if (gimbal.last_gimbal_mode != GIMBAL_UNFOLD) {
                 gimbal.yaw_target = gimbal.ins.yaw;
-                gimbal.pitch_target = 0.f;
+                gimbal.pitch_target = gimbal.ins.pitch * 180.f / fpi;
             }
             //fold pitch
             gimbal.fold_motor_target_angle = FOLD_MOTOR_UP_LIMIT;
@@ -169,7 +169,9 @@ void gimbal_reference() {
             gimbal.yaw_target = remainder(gimbal.yaw_target - gimbal.yaw_rc_delta, 360.f);
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
             // pitch
-            gimbal.pitch_target = 0;
+            gimbal.pitch_target -= static_cast<float>(gimbal.rc.rc_r[1]) * 0.5f / 660.f;
+            gimbal.pitch_target = std::clamp(gimbal.pitch_target,static_cast<float>(PITCH_MOTOR_UP_LIMIT * 180.f / fpi),
+                                                                     static_cast<float>(PITCH_MOTOR_DOWN_LIMIT * 180.f / fpi));
             float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.060;
             gimbal.pitch_torque = pitch_feedforward + PitchSMC.smc_update(gimbal.pitch_target,
                 gimbal.ins.pitch * 180.f / fpi,
@@ -181,18 +183,19 @@ void gimbal_reference() {
         case GIMBAL_AUTO_AIM : {
             if (gimbal.last_gimbal_mode != GIMBAL_AUTO_AIM) {
                 gimbal.yaw_target = gimbal.ins.yaw;
-                gimbal.pitch_target = 0.f;
+                gimbal.pitch_target = gimbal.ins.pitch * 180.f / fpi;
             }
             //fold pitch
             gimbal.fold_motor_target_angle = FOLD_MOTOR_UP_LIMIT;
             // yaw
-            gimbal.yaw_target = vision_pkg->yaw_target * 180.f / fpi;
+            float yaw_delta = vision_pkg->yaw_target * 180.f / fpi;
 
-            gimbal.yaw_target = remainder(gimbal.yaw_target, 360.f);
+            gimbal.yaw_target = remainder(gimbal.yaw_target - yaw_delta, 360.f);
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
             // pitch
-            gimbal.pitch_target = vision_pkg->pitch_target * 180.f / fpi;
+            float pitch_delta = vision_pkg->pitch_target * 180.f / fpi;
 
+            gimbal.pitch_target -= pitch_delta;
             gimbal.pitch_target = std::clamp(gimbal.pitch_target,static_cast<float>(PITCH_MOTOR_UP_LIMIT * 180.f / fpi),
                                                                      static_cast<float>(PITCH_MOTOR_DOWN_LIMIT * 180.f / fpi));
 
