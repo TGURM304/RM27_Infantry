@@ -1,7 +1,7 @@
 //
 // Created by double_J on 2026/10/31.
 //
-
+#include <algorithm>
 #include "def.h"
 #include "gimbal_task.h"
 #include "vision/vision.h"
@@ -39,6 +39,7 @@ msg::can_sender<data_to_chassis, E_CAN_3, 0x311> gimbal_tx;
 msg::can_receiver<data_to_gimbal, E_CAN_3, 0x322> gimbal_rx;
 
 gimbal_t gimbal;
+auto vision_pkg = vision::receive();
 // declaration
 void gimbal_init();
 void gimbal_safety_check();
@@ -76,7 +77,7 @@ void gimbal_update();
             gimbal_reference();
             gimbal_update();
         }
-        vision::send(2, &ins::data()->q[0], gimbal.ins.yaw, gimbal.ins.yaw_vel, gimbal.ins.pitch, gimbal.ins.pitch_vel);
+        vision::send(1, &ins::data()->q[0], gimbal.ins.yaw * fpi / 180.f, gimbal.ins.yaw_vel * fpi / 180.f, gimbal.ins.pitch, gimbal.ins.pitch_vel);
 
         // vofa::send(E_UART_1, gimbal.ins.pitch, gimbal.ins.pitch_vel);
         // vofa::send(E_UART_1, pitch_motor.feedback.pos, pitch_motor.feedback.vel, gimbal.ins.pitch, gimbal.ins.pitch_vel, pitch_motor.feedback.vel, gimbal.pitch_torque);
@@ -160,8 +161,6 @@ void gimbal_reference() {
             if (gimbal.last_gimbal_mode != GIMBAL_UNFOLD) {
                 gimbal.yaw_target = gimbal.ins.yaw;
                 gimbal.pitch_target = 0.f;
-                pitch_speed.clear();
-                pitch_angle.clear();
             }
             //fold pitch
             gimbal.fold_motor_target_angle = FOLD_MOTOR_UP_LIMIT;
@@ -170,12 +169,7 @@ void gimbal_reference() {
             gimbal.yaw_target = remainder(gimbal.yaw_target - gimbal.yaw_rc_delta, 360.f);
             gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
             // pitch
-            // gimbal.pitch_target -= static_cast<float>(gimbal.rc.rc_r[1]) * 0.5f / 660.f;
             gimbal.pitch_target = 0;
-
-            // if (gimbal.pitch_target < PITCH_MOTOR_UP_LIMIT * 180.f / fpi) gimbal.pitch_target = PITCH_MOTOR_UP_LIMIT * 180.f / fpi;
-            // if (gimbal.pitch_target > FOLD_MOTOR_DOWN_LIMIT * 180.f / fpi) gimbal.pitch_target = PITCH_MOTOR_DOWN_LIMIT * 180.f / fpi;
-
             float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.060;
             gimbal.pitch_torque = pitch_feedforward + PitchSMC.smc_update(gimbal.pitch_target,
                 gimbal.ins.pitch * 180.f / fpi,
@@ -184,7 +178,32 @@ void gimbal_reference() {
 
             break;
         }
-        case GIMBAL_AUTO_AIM:
+        case GIMBAL_AUTO_AIM : {
+            if (gimbal.last_gimbal_mode != GIMBAL_AUTO_AIM) {
+                gimbal.yaw_target = gimbal.ins.yaw;
+                gimbal.pitch_target = 0.f;
+            }
+            //fold pitch
+            gimbal.fold_motor_target_angle = FOLD_MOTOR_UP_LIMIT;
+            // yaw
+            gimbal.yaw_target = vision_pkg->yaw_target * 180.f / fpi;
+
+            gimbal.yaw_target = remainder(gimbal.yaw_target, 360.f);
+            gimbal.yaw_torque = YawSMC.smc_update(gimbal.yaw_target, gimbal.ins.yaw, gimbal.ins.yaw_vel);
+            // pitch
+            gimbal.pitch_target = vision_pkg->pitch_target * 180.f / fpi;
+
+            gimbal.pitch_target = std::clamp(gimbal.pitch_target,static_cast<float>(PITCH_MOTOR_UP_LIMIT * 180.f / fpi),
+                                                                     static_cast<float>(PITCH_MOTOR_DOWN_LIMIT * 180.f / fpi));
+
+            float pitch_feedforward = -GIMBAL_MASS * g * cosf(-gimbal.ins.pitch - 3.11f * fpi / 180.f) * 0.060;
+            gimbal.pitch_torque = pitch_feedforward + PitchSMC.smc_update(gimbal.pitch_target,
+                gimbal.ins.pitch * 180.f / fpi,
+                gimbal.ins.pitch_vel * 180.f / fpi
+            );
+
+            break;
+            }
 
         default: break;
     }

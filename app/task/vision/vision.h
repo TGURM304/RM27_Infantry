@@ -16,18 +16,20 @@ namespace vision {
         float pitch_target;           // Pitch角度（弧度）
         float pitch_vel;              // Pitch角速度
         float pitch_acc;              // Pitch角加速度
+        uint16_t crc16;
         } __attribute__((packed));
+    static_assert(sizeof(PcToGimbal) < 64);
 
     struct GimbalToPc {
         uint8_t mode;   //  0: 空闲, 1: 自瞄, 2: 小符, 3: 大符
         float q[4];     //  wxyz顺序
-        float yaw;
+        float yaw;      //
         float yaw_vel;
         float pitch;
         float pitch_vel;
         uint16_t crc16;
     } __attribute__((packed)) ;
-
+    static_assert(sizeof(GimbalToPc) < 64);
 
     void init();
     void send(uint8_t mode, const float *q, float yaw, float yaw_vel, float pitch, float pitch_vel);

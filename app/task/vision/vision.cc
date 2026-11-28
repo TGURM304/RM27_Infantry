@@ -3,16 +3,21 @@
 //
 
 #include "vision.h"
+
+#include <algorithm>
+
 #include "bsp/uart.h"
 #include "utils/crc.h"
 
+using namespace std;
 using namespace vision;
 using namespace crc16;
 
-PcToGimbal rec_pkg;
+PcToGimbal rx_pkg;
 
 void vision::vision_callback(bsp_uart_e device, const uint8_t *data, size_t len) {
-
+    if(len < sizeof rx_pkg) return;
+    copy_n(data, sizeof rx_pkg, reinterpret_cast <uint8_t *>(&rx_pkg));
 }
 
 void vision::init() {
@@ -36,5 +41,5 @@ void vision::send(uint8_t mode, const float *q, float yaw, float yaw_vel, float 
 }
 
 vision::PcToGimbal *vision::receive() {
-    return &rec_pkg;
+    return &rx_pkg;
 }
